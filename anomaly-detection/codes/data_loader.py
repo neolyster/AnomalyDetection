@@ -40,20 +40,20 @@ class DataGenerator(BaseDataGenerator):
     axs.legend(('data', 'train test set split', 'anomalies'))
     savefig(self.config['result_dir'] + '/raw_data_normalised.pdf')
 
-    # slice training set into rolling windows
+    # 将训练数据分成成窗口大小的滚动窗口
     n_train_sample = len(data['training'])
     n_train_vae = n_train_sample - self.config['l_win'] + 1
     rolling_windows = np.zeros((n_train_vae, self.config['l_win']))
     for i in range(n_train_sample - self.config['l_win'] + 1):
       rolling_windows[i] = data['training'][i:i + self.config['l_win']]
 
-    # create VAE training and validation set
+    # 创建VAE训练集和验证集
     idx_train, idx_val, self.n_train_vae, self.n_val_vae = self.separate_train_and_val_set(n_train_vae)
     self.train_set_vae = dict(data=np.expand_dims(rolling_windows[idx_train], -1))
     self.val_set_vae = dict(data=np.expand_dims(rolling_windows[idx_val], -1))
     self.test_set_vae = dict(data=np.expand_dims(rolling_windows[idx_val[:self.config['batch_size']]], -1))
 
-    # create LSTM training and validation set
+    # 创建LSTM的训练集和验证集
     for k in range(self.config['l_win']):
       n_not_overlap_wins = (n_train_sample - k) // self.config['l_win']
       n_train_lstm = n_not_overlap_wins - self.config['l_seq'] + 1
