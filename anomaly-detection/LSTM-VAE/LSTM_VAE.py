@@ -73,9 +73,9 @@ class LSTM_VAE(object):
                                                         mu_bw_lstm_cells, 
                                                         self.X, dtype=tf.float32)
                 mu_outputs = tf.add(mu_fw_outputs,mu_bw_outputs)
-                mu_reshaped = tf.keras.backend.flatten(mu_outputs)
-                self.mu = tf.layers.dense(mu_reshaped,self.time_steps)
-                self.sigma = tf.layer.dense(mu_reshaped,self.time_steps)
+                encode_reshaped = tf.keras.backend.flatten(mu_outputs)
+                self.mu = tf.layers.dense(encode_reshaped, 3)
+                self.sigma = tf.layers.dense(encode_reshaped, 3)
 
                 self.sample_Z = self.mu + tf.log(self.sigma) * tf.random_normal(
                                                         tf.shape(self.mu),
@@ -83,52 +83,53 @@ class LSTM_VAE(object):
 
 
         with tf.variable_scope('decoder'):
-            recons_lstm_cells = _LSTMCells([self.n_hidden,self.input_dim], [tf.nn.softplus, tf.nn.softplus])
+            recons_lstm_cells = _LSTMCells(self.n_hidden, tf.tanh)
             self.recons_X,_ = tf.nn.dynamic_rnn(recons_lstm_cells, self.sample_Z, dtype=tf.float32)
+            decode_reshaped = tf.keras.backend.flatten(self.recons_X)
+            self.recons_mu= tf.layers.dense(decode_reshaped, self.time_steps)
+            self.recons_sigma = tf.layers.dense(decode_reshaped, self.time_steps,activation=tf.nn.softplus)
+
+
 
 
         with tf.variable_scope('loss'):
             reduce_dims = np.arange(1,tf.keras.backend.ndim(self.X))
-            recons_loss = tf.losses.mean_squared_error(self.X, self.recons_X)
-            kl_loss = - 0.5 * tf.reduce_mean(1 + self.sigma_outputs - tf.square(mu_outputs) - tf.exp(self.sigma_outputs))
+            recons_loss = 0.5 * (tf.losses.mean_squared_error(self.X, self.mu) + tf.log(self.X))
+            kl_loss = - 0.5 * tf.reduce_mean(1 + self.sigma - tf.square(self.mu) - tf.exp(self.sigma))
             self.opt_loss = recons_loss + kl_loss
             self.all_losses = tf.reduce_sum(tf.square(self.X - self.recons_X),reduction_indices=reduce_dims)
-
+            self.anomaly_score = tf.reduce_mean(((self.X - self.recons_mu)**2)/2*(self.recons_sigma**2) +
+                                                tf.log(self.recons_sigma))
         with tf.variable_scope('train'):
             self.uion_train_op = tf.train.AdamOptimizer(self.learning_rate).minimize(self.opt_loss)
             
-            
+    def cal_anomaly(self):
+        self.anomaly_score = - tf.reduce_mean(tf.log((self.X - self.recons_mu)/self.recons_sigma))
     def train(self):
         saver = tf.train.Saver()
         this_X = self.data_source.fetch_data(batch_size=self.batch_size)
         with self.sess.as_default():
             for i in range(self.train_iters):
                 # this_X,label = read_batch('./dataset/data0.csv',self.batch_size)
-                self.sess.run([self.uion_train_op],feed_dict={
+
+                _, anomaly_score = self.sess.run([self.uion_train_op, self.anomaly_score], feed_dict={
                         self.X: this_X
                         })
+                print("anomaly_score:", anomaly_score)
                 if i % 200 ==0:
                     mse_loss = self.sess.run([self.opt_loss],feed_dict={
                         self.X: this_X
                         })
                     print('round {}: with loss: {}'.format(i,mse_loss))
-                    Z = self.sess.run([self.sample_Z],feed_dict={self.X :this_X})
-                    print('z:',np.shape(Z))
-                    sigma = self.sess.run([self.sigma_outputs], feed_dict={self.X: this_X})
-                    print('sigama:', np.shape(sigma))
-                    fw_sigma = self.sess.run([self.sigma_fw_outputs], feed_dict={self.X: this_X})
-                    print('fw_sigama:', np.shape(this_X))
+                    # Z = self.sess.run([self.sample_Z],feed_dict={self.X :this_X})
+                    # print('z:',np.shape(Z))
+
                 if i % 500 ==0:
                     saveName = "model/VAE-LSTM_" + str(i)
                     saver.save(self.sess, "model/VAE-LSTM")
-            self._arange_score(self.data_source.train)
 
-    
-    def _arange_score(self,input_data):       
-        input_all_losses = self.sess.run(self.all_losses,feed_dict={
-                self.X: input_data                
-                })
-        self.anomaly_score = np.percentile(input_all_losses,(1-self.outlier_fraction)*100)
+            # self._arange_score(self.data_source.train)
+
        
     def judge(self,test):
         all_test_loss = self.sess.run(self.all_losses,feed_dict={
