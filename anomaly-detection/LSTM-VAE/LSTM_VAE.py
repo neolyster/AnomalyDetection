@@ -132,7 +132,7 @@ class LSTM_VAE(object):
 
        
     def judge(self,test):
-        anomaly_score = self.sess.run(self.anomaly_score,feed_dict={
+        anomaly_score = self.sess.run(self.anomaly_score, feed_dict={
                                     self.X: test
                                     })
         io.savemat('异常分数.mat', {'data': anomaly_score})
