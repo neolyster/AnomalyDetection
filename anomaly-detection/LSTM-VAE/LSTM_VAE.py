@@ -37,18 +37,18 @@ def lrelu(x, leak=0.2, name='lrelu'):
 
 
 def _LSTMCells(unit_list,act_fn_list):
-    return MultiRNNCell([LSTMCell(unit,                         
+    return MultiRNNCell([LSTMCell(unit,
                          activation=act_fn) 
-                         for unit,act_fn in zip(unit_list,act_fn_list )])
+                         for unit, act_fn in zip(unit_list, act_fn_list)])
     
 class LSTM_VAE(object):
-    def __init__(self,dataset_name,columns,z_dim,time_steps,outlier_fraction):
+    def __init__(self,dataset_name, columns, z_dim, time_steps, outlier_fraction):
         self.outlier_fraction = outlier_fraction
-        self.data_source = Data_Hanlder(dataset_name,columns,time_steps)
+        self.data_source = Data_Hanlder(dataset_name, columns, time_steps)
         self.n_hidden = 32
         self.batch_size = 32
-        self.learning_rate = 100
-        self.train_iters = 1000000
+        self.learning_rate = 0.001
+        self.train_iters = 100000
         
         self.input_dim = len(columns)
         self.z_dim = z_dim
@@ -65,39 +65,44 @@ class LSTM_VAE(object):
         
         with tf.variable_scope('encoder'):
             with tf.variable_scope('lat_mu'):
-                mu_fw_lstm_cells = _LSTMCells([self.z_dim],[tf.nn.softplus])
-                mu_bw_lstm_cells = _LSTMCells([self.z_dim],[tf.nn.softplus])
+                mu_fw_lstm_cells = tf.nn.rnn_cell.BasicLSTMCell(self.z_dim)
+                mu_bw_lstm_cells = tf.nn.rnn_cell.BasicLSTMCell(self.z_dim)
 
                 (mu_fw_outputs,mu_bw_outputs),_ = tf.nn.bidirectional_dynamic_rnn(
                                                         mu_fw_lstm_cells,
                                                         mu_bw_lstm_cells, 
                                                         self.X, dtype=tf.float32)
-                mu_outputs = tf.add(mu_fw_outputs,mu_bw_outputs)
-                encode_reshaped = tf.keras.backend.flatten(mu_outputs)
-                self.mu = tf.layers.dense(encode_reshaped, 3)
-                self.sigma = tf.layers.dense(encode_reshaped, 3)
-
+                outputs = tf.add(mu_fw_outputs,mu_bw_outputs)
+                print('mu_outputs:', outputs)
+                # encode_reshaped = tf.reshape(outputs,[])
+                # print('reshaped:', encode_reshaped)
+                self.mu = tf.layers.dense(outputs, 3)
+                self.sigma = tf.layers.dense(outputs, 3)
+                print('sigma:', self.sigma)
                 self.sample_Z = self.mu + tf.log(self.sigma) * tf.random_normal(
                                                         tf.shape(self.mu),
                                                         0,1,dtype=tf.float32)
 
 
         with tf.variable_scope('decoder'):
-            recons_lstm_cells = _LSTMCells(self.n_hidden, tf.tanh)
-            self.recons_X,_ = tf.nn.dynamic_rnn(recons_lstm_cells, self.sample_Z, dtype=tf.float32)
-            decode_reshaped = tf.keras.backend.flatten(self.recons_X)
-            self.recons_mu= tf.layers.dense(decode_reshaped, self.time_steps)
-            self.recons_sigma = tf.layers.dense(decode_reshaped, self.time_steps,activation=tf.nn.softplus)
+
+            recons_lstm_cells = tf.nn.rnn_cell.BasicLSTMCell(self.n_hidden)
+            print('recons_lstm_cells:', self.sample_Z)
+            self.recons_X, _ = tf.nn.dynamic_rnn(recons_lstm_cells, self.sample_Z, dtype=tf.float32)
+            print('recons_X:', self.recons_X)
+            # decode_reshaped = tf.layers.flatten(self.recons_X)
+            self.recons_mu = tf.layers.dense(self.recons_X, self.input_dim)
+            self.recons_sigma = tf.layers.dense(self.recons_X, self.input_dim, activation=tf.nn.softplus)
 
 
 
 
         with tf.variable_scope('loss'):
-            reduce_dims = np.arange(1,tf.keras.backend.ndim(self.X))
-            recons_loss = 0.5 * (tf.losses.mean_squared_error(self.X, self.mu) + tf.log(self.X))
+            reduce_dims = np.arange(1, tf.keras.backend.ndim(self.X))
+            recons_loss = 0.5 * (tf.losses.mean_squared_error(self.X, self.recons_mu) + tf.log(self.X))
             kl_loss = - 0.5 * tf.reduce_mean(1 + self.sigma - tf.square(self.mu) - tf.exp(self.sigma))
             self.opt_loss = recons_loss + kl_loss
-            self.all_losses = tf.reduce_sum(tf.square(self.X - self.recons_X), reduction_indices=reduce_dims)
+            # self.all_losses = tf.reduce_sum(tf.square(self.X - self.recons_X), reduction_indices=reduce_dims)
             self.anomaly_score = tf.reduce_mean(((self.X - self.recons_mu)**2)/2*(self.recons_sigma**2) +
                                                 tf.log(self.recons_sigma))
         with tf.variable_scope('train'):
@@ -115,12 +120,12 @@ class LSTM_VAE(object):
                 self.sess.run(self.uion_train_op, feed_dict={
                         self.X: this_X
                         })
-                print("anomaly_score:", anomaly_score)
+                # print("anomaly_score:", anomaly_score)
                 if i % 200 ==0:
                     mse_loss = self.sess.run([self.opt_loss],feed_dict={
                         self.X: this_X
                         })
-                    print('round {}: with loss: {}'.format(i,mse_loss))
+                    print('round {}: with loss: {}'.format(i, mse_loss))
                     # Z = self.sess.run([self.sample_Z],feed_dict={self.X :this_X})
                     # print('z:',np.shape(Z))
 
@@ -143,7 +148,7 @@ class LSTM_VAE(object):
     def plot_confusion_matrix(self):
 
         predict_label = self.judge(self.data_source.test)
-        self.data_source.plot_confusion_matrix(self.data_source.test_label,predict_label,['Abnormal','Normal'],'LSTM_VAE Confusion-Matrix')
+        # self.data_source.plot_confusion_matrix(self.data_source.test_label,predict_label,['Abnormal','Normal'],'LSTM_VAE Confusion-Matrix')
 
 
     def get_rec_data(self):
@@ -157,15 +162,15 @@ class LSTM_VAE(object):
             data = self.sess.run(self.recons_X,feed_dict={
                 self.X:self.data_source.test
             })
-            np.save('dataset/recon.npy',data)
+            np.save('dataset/recon.npy', data)
         print("完成！")
 
 def main():
 
-    lstm_vae = LSTM_VAE('dataset/data0.csv',['v0','v1','X','Y','Z'],z_dim=16,time_steps=64,outlier_fraction=0.01)
+    lstm_vae = LSTM_VAE('dataset/data0.csv', ['v0','v1','X','Y','Z'], z_dim=16, time_steps=64, outlier_fraction=0.01)
     lstm_vae.train()
     lstm_vae.plot_confusion_matrix()
-    lstm_vae.get_rec_data()
+    # lstm_vae.get_rec_data()
 if __name__ == '__main__':
     print(tf.test.is_gpu_available())
     main()
