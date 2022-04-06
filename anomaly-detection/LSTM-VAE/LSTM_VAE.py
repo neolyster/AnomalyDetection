@@ -14,7 +14,7 @@ import tensorflow as tf
 from tensorflow.nn.rnn_cell import MultiRNNCell, LSTMCell
 from utils import Data_Hanlder
 import os
-
+from scipy import io
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 def read_batch(filenames,batchsize):
@@ -97,7 +97,7 @@ class LSTM_VAE(object):
             recons_loss = 0.5 * (tf.losses.mean_squared_error(self.X, self.mu) + tf.log(self.X))
             kl_loss = - 0.5 * tf.reduce_mean(1 + self.sigma - tf.square(self.mu) - tf.exp(self.sigma))
             self.opt_loss = recons_loss + kl_loss
-            self.all_losses = tf.reduce_sum(tf.square(self.X - self.recons_X),reduction_indices=reduce_dims)
+            self.all_losses = tf.reduce_sum(tf.square(self.X - self.recons_X), reduction_indices=reduce_dims)
             self.anomaly_score = tf.reduce_mean(((self.X - self.recons_mu)**2)/2*(self.recons_sigma**2) +
                                                 tf.log(self.recons_sigma))
         with tf.variable_scope('train'):
@@ -112,7 +112,7 @@ class LSTM_VAE(object):
             for i in range(self.train_iters):
                 # this_X,label = read_batch('./dataset/data0.csv',self.batch_size)
 
-                _, anomaly_score = self.sess.run([self.uion_train_op, self.anomaly_score], feed_dict={
+                self.sess.run(self.uion_train_op, feed_dict={
                         self.X: this_X
                         })
                 print("anomaly_score:", anomaly_score)
@@ -132,12 +132,12 @@ class LSTM_VAE(object):
 
        
     def judge(self,test):
-        all_test_loss = self.sess.run(self.all_losses,feed_dict={
-                                    self.X: test                
+        anomaly_score = self.sess.run(self.anomaly_score,feed_dict={
+                                    self.X: test
                                     })
-        result = map(lambda x: 1 if x< self.anomaly_score else -1,all_test_loss)
+        io.savemat('异常分数.mat', {'data': anomaly_score})
 
-        return list(result)
+        return anomaly_score
 
 
     def plot_confusion_matrix(self):
