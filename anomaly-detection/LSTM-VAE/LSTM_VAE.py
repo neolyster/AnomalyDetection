@@ -68,11 +68,11 @@ class LSTM_VAE(object):
                 mu_fw_lstm_cells = tf.nn.rnn_cell.BasicLSTMCell(self.z_dim)
                 mu_bw_lstm_cells = tf.nn.rnn_cell.BasicLSTMCell(self.z_dim)
 
-                (mu_fw_outputs,mu_bw_outputs),_ = tf.nn.bidirectional_dynamic_rnn(
+                (mu_fw_outputs, mu_bw_outputs), _ = tf.nn.bidirectional_dynamic_rnn(
                                                         mu_fw_lstm_cells,
                                                         mu_bw_lstm_cells, 
                                                         self.X, dtype=tf.float32)
-                outputs = tf.add(mu_fw_outputs,mu_bw_outputs)
+                outputs = tf.add(mu_fw_outputs, mu_bw_outputs)
                 print('mu_outputs:', outputs)
                 # encode_reshaped = tf.reshape(outputs,[])
                 # print('reshaped:', encode_reshaped)

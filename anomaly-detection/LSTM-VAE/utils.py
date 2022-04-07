@@ -17,7 +17,7 @@ class Data_Hanlder(object):
         
         self.data['Class'] = 0
         self.data['Class'] = self.data['result'].apply(lambda x: 1 if x=='normal' else -1)
-        self.data[self.columns] = self.data[self.columns].shift(-1) - self.data[self.columns]
+        # self.data[self.columns] = self.data[self.columns].shift(-1) - self.data[self.columns]
         self.data = self.data.dropna(how='any')
         self.pointer = 0
         self.train = np.array([])
@@ -36,10 +36,10 @@ class Data_Hanlder(object):
         
     def _data_scale(self):
 
-        # standscaler = StandardScaler()
-        mscaler = MinMaxScaler(feature_range=(0,1))
-        # self.data[self.columns] = standscaler.fit_transform(self.data[self.columns])
-        self.data[self.columns] = mscaler.fit_transform(self.data[self.columns])
+        standscaler = StandardScaler()
+        # mscaler = MinMaxScaler(feature_range=(0,1))
+        self.data[self.columns] = standscaler.fit_transform(self.data[self.columns])
+        # self.data[self.columns] = mscaler.fit_transform(self.data[self.columns])
         pass
 
     def _data_arrage(self):
