@@ -46,8 +46,8 @@ class LSTM_VAE(object):
         self.outlier_fraction = outlier_fraction
         self.data_source = Data_Hanlder(dataset_name, columns, time_steps)
         self.n_hidden = 32
-        self.batch_size = 32
-        self.learning_rate = 0.001
+        self.batch_size = 16
+        self.learning_rate = 0.0001
         self.train_iters = 100000
         
         self.input_dim = len(columns)
@@ -61,7 +61,7 @@ class LSTM_VAE(object):
         
     def _build_network(self):
         with tf.variable_scope('ph'):
-            self.X = tf.placeholder(tf.float32,shape=[None,self.time_steps,self.input_dim],name='input_X')
+            self.X = tf.placeholder(tf.float32, shape=[None, self.time_steps, self.input_dim],name='input_X')
         
         with tf.variable_scope('encoder'):
             with tf.variable_scope('lat_mu'):
@@ -81,7 +81,7 @@ class LSTM_VAE(object):
                 print('sigma:', self.sigma)
                 self.sample_Z = self.mu + tf.log(self.sigma) * tf.random_normal(
                                                         tf.shape(self.mu),
-                                                        0,1,dtype=tf.float32)
+                                                        0,1, dtype=tf.float32)
 
 
         with tf.variable_scope('decoder'):
@@ -99,8 +99,11 @@ class LSTM_VAE(object):
 
         with tf.variable_scope('loss'):
             reduce_dims = np.arange(1, tf.keras.backend.ndim(self.X))
-            recons_loss = 0.5 * (tf.losses.mean_squared_error(self.X, self.recons_mu) + tf.log(self.X))
+            recons_loss = 0.5 * tf.reduce_mean(tf.losses.mean_squared_error(self.X, self.recons_mu) +
+                                               tf.log(tf.reduce_sum(self.X)))
+            print('recons_loss:', recons_loss.shape)
             kl_loss = - 0.5 * tf.reduce_mean(1 + self.sigma - tf.square(self.mu) - tf.exp(self.sigma))
+            print('kl_loss:', kl_loss.shape)
             self.opt_loss = recons_loss + kl_loss
             # self.all_losses = tf.reduce_sum(tf.square(self.X - self.recons_X), reduction_indices=reduce_dims)
             self.anomaly_score = tf.reduce_mean(((self.X - self.recons_mu)**2)/2*(self.recons_sigma**2) +
@@ -121,7 +124,7 @@ class LSTM_VAE(object):
                         self.X: this_X
                         })
                 # print("anomaly_score:", anomaly_score)
-                if i % 200 ==0:
+                if i % 200 == 0:
                     mse_loss = self.sess.run([self.opt_loss],feed_dict={
                         self.X: this_X
                         })

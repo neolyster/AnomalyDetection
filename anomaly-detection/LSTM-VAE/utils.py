@@ -36,11 +36,11 @@ class Data_Hanlder(object):
         
     def _data_scale(self):
 
-        standscaler = StandardScaler()
-        # mscaler = MinMaxScaler(feature_range=(0,1))
-        self.data[self.columns] = standscaler.fit_transform(self.data[self.columns])
-        # self.data[self.columns] = mscaler.fit_transform(self.data[self.columns])
-        pass
+        # standscaler = StandardScaler()
+        mscaler = MinMaxScaler(feature_range=(0,1))
+        # self.data[self.columns] = standscaler.fit_transform(self.data[self.columns])
+        self.data[self.columns] = mscaler.fit_transform(self.data[self.columns])
+        # pass
 
     def _data_arrage(self):
         
