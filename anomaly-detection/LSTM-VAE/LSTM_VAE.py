@@ -16,7 +16,7 @@ from utils import Data_Hanlder
 import os
 from scipy import io
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 def read_batch(filenames,batchsize):
     filename_queue = tf.train.string_input_producer([filenames])
     reader = tf.TextLineReader(skip_header_lines=1)
@@ -48,7 +48,7 @@ class LSTM_VAE(object):
         self.n_hidden = 32
         self.batch_size = 16
         self.learning_rate = 0.0001
-        self.train_iters = 100000
+        self.train_iters = 1000000
         
         self.input_dim = len(columns)
         self.z_dim = z_dim
@@ -65,19 +65,22 @@ class LSTM_VAE(object):
         
         with tf.variable_scope('encoder'):
             with tf.variable_scope('lat_mu'):
-                mu_fw_lstm_cells = tf.nn.rnn_cell.BasicLSTMCell(self.z_dim)
+                mu_fw_lstm_cells = tf.nn.rnn_cell.BasicLSTMCell(num_units=self.z_dim, activation= tf.nn.softplus)
                 mu_bw_lstm_cells = tf.nn.rnn_cell.BasicLSTMCell(self.z_dim)
+                init_state = mu_fw_lstm_cells.zero_state(self.batch_size,dtype=tf.float32)
+                init_random = tf.random_normal_initializer(mean = 0.0,stddev= 1.0)
+                # (mu_fw_outputs, mu_bw_outputs), _ = tf.nn.bidirectional_dynamic_rnn(
+                #                                         mu_fw_lstm_cells,
+                #                                         mu_bw_lstm_cells,
+                #                                         self.X, dtype=tf.float32)
+                self.outputs, self.cell_states = tf.nn.dynamic_rnn(mu_fw_lstm_cells, inputs=self.X, initial_state = init_state,dtype=tf.float32)
+                # self.outputs = tf.add(mu_fw_outputs, mu_bw_outputs)
+                print('mu_outputs:', self.outputs)
 
-                (mu_fw_outputs, mu_bw_outputs), _ = tf.nn.bidirectional_dynamic_rnn(
-                                                        mu_fw_lstm_cells,
-                                                        mu_bw_lstm_cells, 
-                                                        self.X, dtype=tf.float32)
-                outputs = tf.add(mu_fw_outputs, mu_bw_outputs)
-                print('mu_outputs:', outputs)
                 # encode_reshaped = tf.reshape(outputs,[])
                 # print('reshaped:', encode_reshaped)
-                self.mu = tf.layers.dense(outputs, 3)
-                self.sigma = tf.layers.dense(outputs, 3)
+                self.mu = tf.layers.dense(self.outputs, 3)
+                self.sigma = tf.layers.dense(self.outputs, 3, activation= tf.nn.softplus)
                 print('sigma:', self.sigma)
                 self.sample_Z = self.mu + tf.log(self.sigma) * tf.random_normal(
                                                         tf.shape(self.mu),
@@ -86,7 +89,7 @@ class LSTM_VAE(object):
 
         with tf.variable_scope('decoder'):
 
-            recons_lstm_cells = tf.nn.rnn_cell.BasicLSTMCell(self.n_hidden)
+            recons_lstm_cells = tf.nn.rnn_cell.BasicLSTMCell(self.n_hidden,activation=tf.tanh)
             print('recons_lstm_cells:', self.sample_Z)
             self.recons_X, _ = tf.nn.dynamic_rnn(recons_lstm_cells, self.sample_Z, dtype=tf.float32)
             print('recons_X:', self.recons_X)
@@ -99,12 +102,13 @@ class LSTM_VAE(object):
 
         with tf.variable_scope('loss'):
             reduce_dims = np.arange(1, tf.keras.backend.ndim(self.X))
-            recons_loss = 0.5 * tf.reduce_mean(tf.losses.mean_squared_error(self.X, self.recons_mu) +
-                                               tf.log(tf.reduce_sum(self.X)))
-            print('recons_loss:', recons_loss.shape)
-            kl_loss = - 0.5 * tf.reduce_mean(1 + self.sigma - tf.square(self.mu) - tf.exp(self.sigma))
-            print('kl_loss:', kl_loss.shape)
-            self.opt_loss = recons_loss + kl_loss
+            # self.recons_loss = 0.5 * tf.reduce_mean(tf.losses.mean_squared_error(self.X, self.recons_mu) +
+            #                                    tf.log(tf.reduce_sum(self.X)))
+            self.recons_loss = tf.losses.mean_squared_error(self.X, self.recons_mu)
+            print('recons_loss:', self.recons_loss.shape)
+            self.kl_loss = - 0.5 * tf.reduce_mean(1 - tf.square(self.sigma) - tf.square(self.mu) + tf.log(tf.square(self.sigma)))
+            print('kl_loss:', self.kl_loss.shape)
+            self.opt_loss = self.recons_loss + self.kl_loss
             # self.all_losses = tf.reduce_sum(tf.square(self.X - self.recons_X), reduction_indices=reduce_dims)
             self.anomaly_score = tf.reduce_mean(((self.X - self.recons_mu)**2)/2*(self.recons_sigma**2) +
                                                 tf.log(self.recons_sigma))
@@ -117,24 +121,49 @@ class LSTM_VAE(object):
         saver = tf.train.Saver()
         this_X = self.data_source.fetch_data(batch_size=self.batch_size)
         with self.sess.as_default():
+            self.sess.run(tf.global_variables_initializer())
+            ckpt = tf.train.get_checkpoint_state('./model/')
+            # print("ckpt:",ckpt.model_checkpoint_path)
+            try :
+                if ckpt and ckpt.model_checkpoint_path:
+                    saver.restore(self.sess, ckpt.model_checkpoint_path)
+                    print("加载模型!")
+            except Exception as e:
+                print("无模型")
             for i in range(self.train_iters):
                 # this_X,label = read_batch('./dataset/data0.csv',self.batch_size)
 
-                self.sess.run(self.uion_train_op, feed_dict={
-                        self.X: this_X
-                        })
-                # print("anomaly_score:", anomaly_score)
-                if i % 200 == 0:
-                    mse_loss = self.sess.run([self.opt_loss],feed_dict={
-                        self.X: this_X
-                        })
-                    print('round {}: with loss: {}'.format(i, mse_loss))
-                    # Z = self.sess.run([self.sample_Z],feed_dict={self.X :this_X})
-                    # print('z:',np.shape(Z))
 
-                if i % 500 ==0:
+                # print("X isnan:", np.isnan(this_X).sum())
+                # print("anomaly_score:", anomaly_score)
+                if i %200 == 0:
+                    mu,output, mse_loss,kl,recon = self.sess.run([self.mu,self.outputs,self.opt_loss,self.kl_loss,self.recons_loss],feed_dict={
+                        self.X: this_X
+                        })
+                    print(this_X.shape)
+                    # Z = self.sess.run([self.sample_Z],feed_dict={self.X :this_X})
+                    # print('mse:{},log:{},sum:{}'.format(mse,log,sum))
+
+                # print('cell_states:{}'.format(cell_states))
+
+                # print('sigma.shape:{}'.format(sigma.shape))
+                # print('output:{}'.format(output))
+                    print("mu:",mu)
+                    print('recon_loss:{},kl_loss:{}'.format(recon,kl))
+                # print('mse:{}'.format(mse))
+                #
+                    # print('output:{}'.format(output))
+                # print('z:{}'.format(Z))
+                    # print('X.shape:{}'.format(this_X.shape))
+                # print('X:{}'.format(this_X))
+
+                    print('round {}: with loss: {}'.format(i, mse_loss))
+                self.sess.run(self.uion_train_op, feed_dict={
+                    self.X: this_X
+                })
+                if i % 2000 ==0:
                     saveName = "model/VAE-LSTM_" + str(i)
-                    saver.save(self.sess, "model/VAE-LSTM")
+                    saver.save(self.sess, saveName)
 
             # self._arange_score(self.data_source.train)
 
@@ -165,6 +194,7 @@ class LSTM_VAE(object):
             data = self.sess.run(self.recons_X,feed_dict={
                 self.X:self.data_source.test
             })
+            print("测试集:",self.data_source.test.shape)
             np.save('dataset/recon.npy', data)
         print("完成！")
 

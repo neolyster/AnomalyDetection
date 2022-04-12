@@ -18,6 +18,7 @@ class Data_Hanlder(object):
         self.data['Class'] = 0
         self.data['Class'] = self.data['result'].apply(lambda x: 1 if x=='normal' else -1)
         # self.data[self.columns] = self.data[self.columns].shift(-1) - self.data[self.columns]
+        self.data[self.columns] = self.data[self.columns]/1000;
         self.data = self.data.dropna(how='any')
         self.pointer = 0
         self.train = np.array([])
@@ -29,8 +30,8 @@ class Data_Hanlder(object):
         
         
     def _process_source_data(self):
- 
-        self._data_scale()
+        print("处理数据")
+        # self._data_scale()
         self._data_arrage()
         self._split_save_data()
         
@@ -82,10 +83,11 @@ class Data_Hanlder(object):
             self.train = np.load('dataset/train.npy')
             self.test = np.load('dataset/test.npy')
             self.test_label = np.load('dataset/test_label.npy')        
-        if self.train.ndim ==3:
-            if self.train.shape[1] == self.time_steps and self.train.shape[2] != len(self.columns):
-                return 0
-        self._process_source_data()
+            if self.train.ndim ==3:
+                if self.train.shape[1] == self.time_steps and self.train.shape[2] != len(self.columns):
+                    return 0
+        else:
+            self._process_source_data()
 
 
 
