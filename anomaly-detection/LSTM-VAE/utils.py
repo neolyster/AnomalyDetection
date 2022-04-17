@@ -100,12 +100,17 @@ class Data_Hanlder(object):
         else:
             if (self.pointer + 1) * batch_size >= self.train.shape[0]-1:
                 self.pointer = 0
-                return_train = self.train[self.pointer * batch_size:,]
-            else:
-                self.pointer = self.pointer + 1
                 return_train = self.train[self.pointer * batch_size:(self.pointer + 1) * batch_size,]
+                print("here")
+            else:
+
+                return_train = self.train[self.pointer * batch_size:(self.pointer + 1) * batch_size,]
+                self.pointer = self.pointer + 1
+                # print('batch:',(self.pointer + 1) * batch_size)
+                # print('len:',self.train.shape[0])
         if return_train.ndim < self.train.ndim:
             return_train = np.expand_dims(return_train,0)
+        # print("fetch_data:",return_train.shape)
         return return_train
     
     def plot_confusion_matrix(self,y_true, y_pred, labels,title):
